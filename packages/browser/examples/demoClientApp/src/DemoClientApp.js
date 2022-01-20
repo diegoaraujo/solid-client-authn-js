@@ -5,29 +5,31 @@ import "regenerator-runtime/runtime";
 //   Session,
 //   getClientAuthenticationWithDependencies,
 // } from "@inrupt/solid-client-authn-browser";
-import { Session } from "../../../dist/Session";
+import { getDefaultSession, handleIncomingRedirect } from "../../../dist/index";
 import { getClientAuthenticationWithDependencies } from "../../../dist/dependencies";
 
 const clientApplicationName = "S-C-A Browser Demo Client App";
 let snackBarTimeout = undefined;
 let identityProviderLogoutEndpointTimeout = null;
 
-const defaultLocalClientAppSessionId = "my local session id";
+// const defaultLocalClientAppSessionId = "my local session id";
 
 const NSS_SERVER_URL = "https://inrupt.net/";
 
 // TODO: PMCB55: make demo's 'prettier' by avoiding 'localhost'...
 // const defaultClientEndpoint = "http://my-demo-app.com/";
-const defaultClientEndpoint = "http://localhost:3001/";
+// const defaultClientEndpoint = "http://localhost:3001/";
 
 const preconfiguedIdpList = [
+  "https://openid.dev-next.inrupt.com",
   "https://broker.pod.inrupt.com",
   "https://broker.dev-ess.inrupt.com",
   "https://broker.demo-ess.inrupt.com",
   "https://inrupt.net",
 ];
 
-const defaultIssuer = "https://broker.pod.inrupt.com/";
+// const defaultIssuer = "https://broker.pod.inrupt.com/";
+const defaultIssuer = preconfiguedIdpList[0];
 const defaultProtectedResource =
   "https://ldp.pod.inrupt.com/sdktestuser/private/";
 
@@ -41,12 +43,14 @@ class DemoClientApp extends Component {
   constructor(props) {
     super(props);
 
-    const session = new Session(
-      {
-        clientAuthentication: getClientAuthenticationWithDependencies({}),
-      },
-      defaultLocalClientAppSessionId
-    );
+    const session = getDefaultSession();
+
+    // const session = new Session(
+    //   {
+    //     clientAuthentication: getClientAuthenticationWithDependencies({}),
+    //   },
+    //   defaultLocalClientAppSessionId
+    // );
 
     this.state = {
       status: "loading",
@@ -75,43 +79,56 @@ class DemoClientApp extends Component {
     if (window.location.pathname === "/popup") {
       this.state.status = "popup";
       setTimeout(() => window.close(), 2000);
-    } else if (this.state.session.isLoggedIn) {
-      this.setState({ status: "dashboard", session });
     } else {
-      // Depending on which flow login uses, the response will either be "code" or "access_token".
-      const authCode =
-        new URL(window.location.href).searchParams.get("code") ||
-        // FIXME: Temporarily handle both auth code and implicit flow.
-        // Should be either removed or refactored.
-        new URL(window.location.href).searchParams.get("access_token");
+      // handleIncoming
+      const sessionInfo = await handleIncomingRedirect();
 
-      if (!authCode) {
+      if (!sessionInfo.isLoggedIn) {
         this.setState({
           status: "login",
         });
       } else {
-        try {
-          const sessionInfo = await this.state.session.handleIncomingRedirect(
-            window.location.href
-          );
-
-          this.setState({
-            status: "dashboard",
-            sessionInfo: sessionInfo,
-            fetchRoute: defaultProtectedResource,
-          });
-        } catch (error) {
-          console.log(
-            `Error attempting to handle what looks like an incoming OAuth2 redirect - could just be a user hitting the 'back' key to a previous redirect (since that previous code will no longer be valid!): ${error}`
-          );
-          this.setState({
-            status: "login",
-          });
-        }
+        this.setState({
+          status: "dashboard",
+          sessionInfo: sessionInfo,
+          fetchRoute: defaultProtectedResource,
+        });
+        debugger;
       }
+
+      // // Depending on which flow login uses, the response will either be "code" or "access_token".
+      // const authCode =
+      //   new URL(window.location.href).searchParams.get("code") ||
+      //   // FIXME: Temporarily handle both auth code and implicit flow.
+      //   // Should be either removed or refactored.
+      //   new URL(window.location.href).searchParams.get("access_token");
+      // debugger;
+      // if (!authCode) {
+      //   this.setState({
+      //     status: "login",
+      //   });
+      // } else {
+      //   try {
+      //     const sessionInfo = await this.state.session.handleIncomingRedirect(
+      //       window.location.href
+      //     );
+      //     this.setState({
+      //       status: "dashboard",
+      //       sessionInfo: sessionInfo,
+      //       fetchRoute: defaultProtectedResource,
+      //     });
+      //   } catch (error) {
+      //     console.log(
+      //       `Error attempting to handle what looks like an incoming OAuth2 redirect - could just be a user hitting the 'back' key to a previous redirect (since that previous code will no longer be valid!): ${error}`
+      //     );
+      //     this.setState({
+      //       status: "login",
+      //     });
+      //   }
+      // }
     }
 
-    this.lookupIdentityProviderConfig(this.state.loginIssuer);
+    // this.lookupIdentityProviderConfig(this.state.loginIssuer);
   }
 
   async handleLogin(e, isPopup = false) {
@@ -207,6 +224,7 @@ class DemoClientApp extends Component {
   }
 
   /**
+   * FIXME: broken as of ESS 1.2
    * Very hacky attempt at splitting a WebID into 'components', such that:
    *  Component 0 is up to, but not including, the username part of the WebID.
    *  Component 1 is just the username part of the WebID.
